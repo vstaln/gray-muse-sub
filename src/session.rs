@@ -133,7 +133,11 @@ fn input_parts(items: &[Value], system: &str) -> Result<Vec<Value>, String> {
     for item in items {
         if let Some(mut t) = tail_item_text(item) {
             if t.len() > MAX_TRANSCRIPT_CHARS {
-                t.truncate(MAX_TRANSCRIPT_CHARS);
+                let mut end = MAX_TRANSCRIPT_CHARS;
+                while !t.is_char_boundary(end) {
+                    end -= 1;
+                }
+                t.truncate(end);
                 t.push_str("\n[truncated]");
             }
             texts.push(t);
