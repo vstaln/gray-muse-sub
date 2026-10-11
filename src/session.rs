@@ -15,6 +15,7 @@
 //!   visible reasoning (MSP v1 never streams raw thinking text).
 
 use acp_bridge::chat::{self, OutItem, TurnResult, Usage};
+use acp_bridge::guard::{self, TurnGuard};
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -29,6 +30,18 @@ const MAX_SESSIONS: usize = 8;
 const TURN_TIMEOUT: Duration = Duration::from_secs(900);
 const POLL: Duration = Duration::from_millis(250);
 const MAX_TRANSCRIPT_CHARS: usize = 400_000;
+const RECORDS: &[&str] = &[
+    "User: ",
+    "Assistant: ",
+    "System: ",
+    "Assistant called tool ",
+    "Tool result for ",
+    "## Tool result for ",
+    "## System instructions",
+];
+const ONE_TURN_RULE: &str = "You write exactly ONE assistant turn. Never write `User:`, \
+    `## Tool result for …` or any other transcript record yourself; tool results only come from \
+    the harness. Never claim a command ran unless its `Tool result` is in the transcript.";
 
 struct MuseSession {
     session_id: String,
@@ -38,6 +51,7 @@ struct MuseSession {
     reply_call_ids: Vec<String>,
     reply_text: String,
     last_used: Instant,
+    prior_cut: bool,
 }
 
 pub struct Pool {
@@ -128,7 +142,7 @@ fn input_parts(items: &[Value], system: &str) -> Result<Vec<Value>, String> {
     let mut texts: Vec<String> = Vec::new();
     let mut images: Vec<Value> = Vec::new();
     if !system.trim().is_empty() {
-        texts.push(format!("## System instructions\n{system}"));
+        texts.push(format!("## System instructions\n{system}\n\n{ONE_TURN_RULE}"));
     }
     for item in items {
         if let Some(mut t) = tail_item_text(item) {
@@ -344,10 +358,15 @@ fn drive(
     // In-order (itemId → block) append: a fresh itemId opens a new block.
     let mut open_item = String::new();
     let mut open_is_text = true;
-    let mut push = |is_text: bool, item_id: &str, piece: &str| {
+    let mut turn_guard = TurnGuard::new(RECORDS, Some(guard::LABEL));
+    let mut push = |is_text: bool, item_id: &str, piece: &str| -> Option<&'static str> {
+        if turn_guard.cut().is_some() {
+            return None;
+        }
         if item_id != open_item || is_text != open_is_text {
             open_item = item_id.to_string();
             open_is_text = is_text;
+            turn_guard.new_segment();
             result.items.push(if is_text {
                 OutItem::Message {
                     text: String::new(),
@@ -358,13 +377,19 @@ fn drive(
                 }
             });
         }
-        if let Some(last) = result.items.last_mut() {
-            match last {
-                OutItem::Message { text } | OutItem::Reasoning { text } => text.push_str(piece),
-                _ => {}
+        match result.items.last_mut() {
+            Some(OutItem::Message { text }) => {
+                text.push_str(piece);
+                if is_text {
+                    return turn_guard.feed(text);
+                }
             }
+            Some(OutItem::Reasoning { text }) => text.push_str(piece),
+            _ => {}
         }
+        None
     };
+    let mut cut: Option<&'static str> = None;
 
     loop {
         if cancel.load(Ordering::SeqCst) {
@@ -418,7 +443,7 @@ fn drive(
                     .and_then(Value::as_str)
                     .unwrap_or("");
                 if field == "text" {
-                    push(true, item_id, delta);
+                    cut = cut.or(push(true, item_id, delta));
                     *streamed.entry(item_id.to_string()).or_insert(0) += delta.len();
                 } else if is_summary_field(field) {
                     // summary.N deltas chain across N: newline only when N advances.
@@ -469,7 +494,7 @@ fn drive(
                 };
                 let seen = streamed.get(item_id).copied().unwrap_or(0);
                 if snapshot.len() > seen && snapshot.is_char_boundary(seen) {
-                    push(is_text, item_id, &snapshot[seen..]);
+                    cut = cut.or(push(is_text, item_id, &snapshot[seen..]));
                 }
                 streamed.remove(item_id);
             }
@@ -565,6 +590,20 @@ fn drive(
             }
             _ => {}
         }
+        if let Some(m) = cut {
+            eprintln!(
+                "muse-sub: reply cut at fabricated {} record; turn interrupted",
+                guard::marker_name(m)
+            );
+            let _ = host.request(
+                "turn/interrupt",
+                json!({"commandId": uuid7(), "sessionId": session_id,
+                       "turnId": turn_id, "retract": false}),
+                msp::RPC_TIMEOUT,
+            );
+            result.stop_reason = "cut".into();
+            return Ok(result);
+        }
     }
 }
 
@@ -624,6 +663,7 @@ pub fn run_turn(pool: &Arc<Pool>, raw: &[u8], cancel: &AtomicBool) -> Result<Vec
                     reply_call_ids: Vec::new(),
                     reply_text: String::new(),
                     last_used: Instant::now(),
+                    prior_cut: false,
                 },
             );
             tail = &prep.input;
@@ -644,15 +684,26 @@ pub fn run_turn(pool: &Arc<Pool>, raw: &[u8], cancel: &AtomicBool) -> Result<Vec
     } else {
         (tail, "")
     };
-    let parts = input_parts(items, system)?;
+    let mut parts = input_parts(items, system)?;
+    if let Some(s) = guard.get_mut(&key) {
+        if std::mem::take(&mut s.prior_cut) && !fresh {
+            parts.insert(0, json!({"type": "text", "text": acp_bridge::guard::CUT_NOTE}));
+        }
+    }
 
     let effort = reasoning_effort(prep.effort.as_deref());
     let result = drive(&host, &session_id, parts, effort, cancel);
 
     match result {
-        Ok(r) => {
+        Ok(mut r) => {
+            let was_cut = r.stop_reason == "cut";
+            if was_cut {
+                r.stop_reason = "stop".into();
+            }
+            guard::clean_items(&mut r.items);
             let (call_ids, reply_text) = chat::reply_signature(&r);
             if let Some(s) = guard.get_mut(&key) {
+                s.prior_cut = was_cut;
                 s.absorbed = prep.input.clone();
                 s.reply_call_ids = call_ids;
                 s.reply_text = reply_text;
