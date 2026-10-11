@@ -15,10 +15,12 @@ pub const LOGIN_HINT: &str =
 
 /// Mirror of cursor-sub's GRAY_CURSOR_SUB_COMMAND / pi's PI_MUSE_BINARY.
 const BINARY_ENV: &str = "GRAY_MUSE_SUB_COMMAND";
-/// Mirror of pi's PI_MUSE_MSP_SANDBOXED: `1` = serve with workspace trust
-/// only (per-request approvals, auto-decided); default = --disable-sandbox
-/// + approvalMode allowAll, same as pi-muse-msp.
-const SANDBOX_ENV: &str = "GRAY_MUSE_SUB_SANDBOXED";
+/// Sandboxed by default: `muse serve` runs with workspace trust only
+/// (approvalMode onRequest, auto-decided). `GRAY_MUSE_SUB_UNSANDBOXED=1`
+/// restores the pi-muse-msp default of --disable-sandbox + allowAll;
+/// `GRAY_MUSE_SUB_SANDBOXED=1` is still accepted as a no-op.
+const UNSANDBOX_ENV: &str = "GRAY_MUSE_SUB_UNSANDBOXED";
+const MAX_STEPS_ENV: &str = "GRAY_MUSE_SUB_MAX_STEPS";
 
 pub fn resolve_command() -> Option<String> {
     if let Ok(explicit) = std::env::var(BINARY_ENV) {
@@ -31,10 +33,19 @@ pub fn resolve_command() -> Option<String> {
 }
 
 pub fn sandboxed() -> bool {
-    matches!(
-        std::env::var(SANDBOX_ENV).map(|v| v.trim().to_lowercase()),
+    !matches!(
+        std::env::var(UNSANDBOX_ENV).map(|v| v.trim().to_lowercase()),
         Ok(v) if v == "1" || v == "true" || v == "yes"
     )
+}
+
+/// Per-turn cap on billed model steps (one `session/tokenUsage` each);
+/// 0 = unlimited.
+pub fn max_steps() -> u64 {
+    std::env::var(MAX_STEPS_ENV)
+        .ok()
+        .and_then(|v| v.trim().parse().ok())
+        .unwrap_or(30)
 }
 
 /// `muse --version` probe — install check only, never auth.

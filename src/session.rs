@@ -332,6 +332,8 @@ fn drive(
     }
 
     let deadline = Instant::now() + TURN_TIMEOUT;
+    let max_steps = crate::setup::max_steps();
+    let mut steps = 0u64;
     let mut result = TurnResult {
         stop_reason: "stop".into(),
         ..Default::default()
@@ -474,6 +476,23 @@ fn drive(
             "session/tokenUsage" => {
                 if let Some(u) = params.get("usage").and_then(usage_from_msp) {
                     result.usage = Some(u);
+                }
+                steps += 1;
+                if max_steps != 0 && steps >= max_steps {
+                    let _ = host.request(
+                        "turn/interrupt",
+                        json!({"commandId": uuid7(), "sessionId": session_id,
+                               "turnId": turn_id, "retract": false}),
+                        msp::RPC_TIMEOUT,
+                    );
+                    push(
+                        true,
+                        "stepcap",
+                        &format!(
+                            "[muse-sub: stopped after {steps} steps — raise GRAY_MUSE_SUB_MAX_STEPS to allow more]"
+                        ),
+                    );
+                    return Ok(result);
                 }
             }
             "approval/requested" | "approval/updated" => {

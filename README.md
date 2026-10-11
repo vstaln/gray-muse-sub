@@ -48,12 +48,14 @@ Then install the binary as a gray plugin (same flow as `cursor-sub` /
 | Var | Default | Meaning |
 | --- | --- | --- |
 | `GRAY_MUSE_SUB_COMMAND` | `muse` on PATH | Muse binary override (pi's `PI_MUSE_BINARY`) |
-| `GRAY_MUSE_SUB_SANDBOXED` | unset (unsandboxed) | `1` = serve with workspace trust only (`approvalMode: onRequest`, auto-decided); default = `--disable-sandbox` + `allowAll`, same as pi-muse-msp |
+| `GRAY_MUSE_SUB_UNSANDBOXED` | unset (sandboxed) | `1` = `--disable-sandbox` + `allowAll` (pi-muse-msp's old default); `GRAY_MUSE_SUB_SANDBOXED=1` remains a no-op |
+| `GRAY_MUSE_SUB_MAX_STEPS` | `30` | per-turn cap on billed model steps (`0` = unlimited); on the cap the turn is interrupted and ends with a notice |
 
 ## Behavior notes (pi-muse-msp parity)
 
-- One `muse serve --trust-workspace [--disable-sandbox]` host per sidecar;
-  spawned lazily, respawned if it dies, killed on `plugin/shutdown`.
+- One `muse serve --trust-workspace` host per sidecar (`--disable-sandbox`
+  only when `GRAY_MUSE_SUB_UNSANDBOXED=1`); spawned lazily, respawned if it
+  dies, killed on `plugin/shutdown`.
 - One MSP `session/start` per conversation; continuation is matched by
   verbatim absorbed-prefix + reply echo (same model as `acp_bridge`).
 - Spark-family models (`muse-spark*`, `spark`) send `providerId: "meta"`;
