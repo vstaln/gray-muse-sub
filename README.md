@@ -9,9 +9,7 @@ CLI's `muse serve` child exactly like the Pi extension does.
 
 ## What it does
 
-- `provider/models` — live `model/list` from the running host, with the
-  documented static catalog (`muse-spark` + `muse-spark-1.2/1.3`
-  ± `-contributor`) as fallback when the host can't be reached.
+- `provider/models` — live `model/list` from the running host, and no hardcoded fallback: if the host can't be reached, the list is reported unavailable.
 - `provider/chat` — per-turn loopback relay (shared `acp_bridge::relay`).
   The host POSTs an OpenAI Responses request; the sidecar drives one MSP
   `turn/start` → `item/delta`/`item/completed` → `turn/completed` cycle and

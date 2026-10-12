@@ -16,21 +16,6 @@ const PROVIDER_ID: &str = "muse";
 const AUTH_CLI: &str = "muse-cli";
 const TOKEN_PREFIX: &str = "muse-sub-";
 
-/// pi-muse-msp's FALLBACK_MODELS — the documented catalog when a live
-/// `model/list` can't be read (no binary, cold host, auth pending).
-fn fallback_models() -> Vec<Value> {
-    [
-        ("muse-spark", "Muse Spark (server default)"),
-        ("muse-spark-1.3", "muse-spark-1.3"),
-        ("muse-spark-1.3-contributor", "muse-spark-1.3-contributor"),
-        ("muse-spark-1.2", "muse-spark-1.2"),
-        ("muse-spark-1.2-contributor", "muse-spark-1.2-contributor"),
-    ]
-    .iter()
-    .map(|(id, name)| json!({"id": id, "name": name}))
-    .collect()
-}
-
 fn manifest() -> Value {
     json!({
         "name": "muse-sub",
@@ -286,9 +271,9 @@ fn live_models() -> Result<Vec<Value>, String> {
 }
 
 fn provider_models(_params: &Value) -> Result<Value, RpcError> {
-    // Documented fallback ships the catalog even when the live list
-    // can't be read (task spec: "live or documented fallback").
-    let rows = live_models().unwrap_or_else(|_| fallback_models());
+    // Live catalog only (the official host's model/list). Nothing is hardcoded.
+    let rows = live_models()
+        .map_err(|e| unavailable(format!("muse: model list unavailable ({e})")))?;
     Ok(json!({
         "provider": PROVIDER_ID,
         "models": rows,
