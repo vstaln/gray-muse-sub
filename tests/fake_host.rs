@@ -1,3 +1,4 @@
+#![cfg(unix)]
 //! Mock-verified relay: a fake `muse serve` host (python, newline
 //! JSON-RPC) is spawned via GRAY_MUSE_SUB_COMMAND and driven through the
 //! real session/run_turn path — handshake, session/start, turn/start,
