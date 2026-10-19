@@ -6,6 +6,7 @@
 //! credential — `auth/refresh` proves it with a serve handshake.
 
 use serde_json::{json, Value};
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 pub const INSTALL_HINT: &str =
@@ -96,24 +97,51 @@ pub fn logout() {
 }
 
 fn which_on_path(name: &str) -> Option<String> {
-    let path = std::env::var("PATH").ok()?;
-    for dir in path.split(':') {
-        let candidate = format!("{dir}/{name}");
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            if let Ok(m) = std::fs::metadata(&candidate) {
-                if m.is_file() && m.permissions().mode() & 0o111 != 0 {
-                    return Some(candidate);
-                }
+    let path = std::env::var_os("PATH")?;
+    for dir in std::env::split_paths(&path) {
+        for cand in exe_candidates(&dir, name) {
+            if is_executable(&cand) {
+                return Some(cand.to_string_lossy().into_owned());
             }
-        }
-        #[cfg(not(unix))]
-        if std::fs::metadata(&candidate).map(|m| m.is_file()).unwrap_or(false) {
-            return Some(candidate);
         }
     }
     None
+}
+
+/// `dir/name` spellings that can actually be spawned: the bare name, plus on
+/// Windows the PATHEXT forms CreateProcess runs (.EXE/.COM — a .CMD/.BAT
+/// resolves on disk but fails at spawn, so it isn't a real candidate).
+fn exe_candidates(dir: &Path, name: &str) -> Vec<PathBuf> {
+    #[cfg(windows)]
+    {
+        let pathext = std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE".into());
+        let mut v = vec![dir.join(name)];
+        v.extend(
+            pathext
+                .split(';')
+                .map(str::trim)
+                .filter(|e| e.eq_ignore_ascii_case(".exe") || e.eq_ignore_ascii_case(".com"))
+                .map(|e| dir.join(format!("{name}{e}"))),
+        );
+        v
+    }
+    #[cfg(not(windows))]
+    {
+        vec![dir.join(name)]
+    }
+}
+
+#[cfg(unix)]
+fn is_executable(p: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::metadata(p)
+        .map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+        .unwrap_or(false)
+}
+
+#[cfg(not(unix))]
+fn is_executable(p: &Path) -> bool {
+    p.is_file()
 }
 
 /// Credential material for a working muse host.
