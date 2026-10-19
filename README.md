@@ -13,7 +13,10 @@ CLI's `muse serve` child exactly like the Pi extension does.
 - `provider/chat` — per-turn loopback relay (shared `acp_bridge::relay`).
   The host POSTs an OpenAI Responses request; the sidecar drives one MSP
   `turn/start` → `item/delta`/`item/completed` → `turn/completed` cycle and
-  streams Responses SSE back.
+  streams Responses SSE back. Settled turns persist a pool record
+  (`~/.cache/muse-sub/resume/<sid>`); at startup, records inside a 6h warm
+  window are re-pooled via `session/resume` so the next turn continues the
+  MSP session instead of replaying the transcript.
 - `provider/auth/*` — `muse-cli` (oauth-kind) auth method: `muse` is a
   login-owning CLI, so "credentials" = a working `muse serve` handshake
   (`initialize` + `model/list` probe). `auth/start` runs `muse login`
@@ -72,7 +75,10 @@ Then install the binary as a gray plugin (same flow as `cursor-sub` /
   tools are not bridged into MSP — `function_call_output` tail items are
   forwarded as `## Tool result` transcript text, matching pi's deltaParts.
 - Durable-log salvage (`~/.local/share/muse/sessions/*.jsonl`) and session
-  resume/fork/steer are not implemented — a dead projector fails the turn.
+  fork/steer are not implemented — a dead projector fails the turn.
+  Resume is only used to re-pool this sidecar's own sessions after a
+  restart; a re-pooled session that dies on its first turn falls back to
+  a fresh `session/start` (`fresh:rewarm_dead`).
 - `muse login` command name is best-effort (unverified — the Pi extension
   never invokes login); if it doesn't exist, run the CLI's documented
   login manually — `auth/poll` settles on any working host.

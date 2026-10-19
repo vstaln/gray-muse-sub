@@ -384,6 +384,13 @@ fn main() {
     let ops: Ops = Arc::new(Mutex::new(HashMap::new()));
     let intents: Intents = Default::default();
     let pool = session::Pool::new();
+    // Re-pool sessions persisted before a restart so the next turn on
+    // each conversation is a strict continuation, not a transcript
+    // replay — best-effort, background.
+    {
+        let pool = pool.clone();
+        std::thread::spawn(move || session::rewarm(&pool));
+    }
     let stdin = std::io::stdin();
     let stdout = std::io::stdout();
     let mut out = stdout.lock();
