@@ -38,6 +38,7 @@ fn manifest() -> Value {
             },
         }],
         "commands": ["/muse"],
+        "command_descriptions": {"/muse": "switch to Muse models"},
     })
 }
 
