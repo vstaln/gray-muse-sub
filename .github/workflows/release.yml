@@ -28,6 +28,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - name: Check out sibling crates
+        shell: bash
+        run: |
+          git clone --depth 1 "https://github.com/vstaln/gray-acp-bridge" "../gray-acp-bridge"
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
