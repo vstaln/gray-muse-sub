@@ -147,7 +147,10 @@ fn mock_host_full_turn() {
         .collect();
     assert_eq!(turn_starts.len(), 2);
     let second_input = turn_starts[1]["params"]["input"].to_string();
-    assert!(!second_input.contains("be terse"), "system resent: {second_input}");
+    assert!(
+        !second_input.contains("be terse"),
+        "system resent: {second_input}"
+    );
     assert!(second_input.contains("again"));
 
     // Turn 3: approval auto-decide (approved choice picked).
