@@ -111,9 +111,11 @@ fn item_images(item: &Value, out: &mut Vec<Value>) {
         }
         let url = part
             .get("image_url")
-            .and_then(|u| u.as_str().map(str::to_string).or_else(|| {
-                u.get("url").and_then(Value::as_str).map(str::to_string)
-            }))
+            .and_then(|u| {
+                u.as_str()
+                    .map(str::to_string)
+                    .or_else(|| u.get("url").and_then(Value::as_str).map(str::to_string))
+            })
             .unwrap_or_default();
         let Some(rest) = url.strip_prefix("data:") else {
             continue;
@@ -133,10 +135,7 @@ fn item_images(item: &Value, out: &mut Vec<Value>) {
 fn tail_item_text(item: &Value) -> Option<String> {
     let ty = item.get("type").and_then(Value::as_str).unwrap_or("");
     if ty == "function_call_output" {
-        let call_id = item
-            .get("call_id")
-            .and_then(Value::as_str)
-            .unwrap_or("?");
+        let call_id = item.get("call_id").and_then(Value::as_str).unwrap_or("?");
         let output = item
             .get("output")
             .map(|o| match o {
@@ -155,7 +154,9 @@ fn input_parts(items: &[Value], system: &str) -> Result<Vec<Value>, String> {
     let mut texts: Vec<String> = Vec::new();
     let mut images: Vec<Value> = Vec::new();
     if !system.trim().is_empty() {
-        texts.push(format!("## System instructions\n{system}\n\n{ONE_TURN_RULE}"));
+        texts.push(format!(
+            "## System instructions\n{system}\n\n{ONE_TURN_RULE}"
+        ));
     }
     for item in items {
         if let Some(mut t) = tail_item_text(item) {
@@ -291,7 +292,10 @@ fn decide_approval(
     let Some(choice) = choice else {
         return Err(format!(
             "Muse approval had no automatic choice (tool {})",
-            params.get("toolName").and_then(Value::as_str).unwrap_or("?")
+            params
+                .get("toolName")
+                .and_then(Value::as_str)
+                .unwrap_or("?")
         ));
     };
     host.request(
@@ -462,10 +466,7 @@ fn drive(
                     .get("field")
                     .and_then(Value::as_str)
                     .unwrap_or("text");
-                let item_id = params
-                    .get("itemId")
-                    .and_then(Value::as_str)
-                    .unwrap_or("");
+                let item_id = params.get("itemId").and_then(Value::as_str).unwrap_or("");
                 if field == "text" {
                     cut = cut.or(push(true, item_id, delta));
                     *streamed.entry(item_id.to_string()).or_insert(0) += delta.len();
@@ -488,14 +489,14 @@ fn drive(
                     continue;
                 }
                 let kind = item.get("kind").and_then(Value::as_str).unwrap_or("");
-                let item_id = item
-                    .get("itemId")
-                    .and_then(Value::as_str)
-                    .unwrap_or("");
+                let item_id = item.get("itemId").and_then(Value::as_str).unwrap_or("");
                 let (is_text, snapshot) = match kind {
                     "agentMessage" => (
                         true,
-                        item.get("text").and_then(Value::as_str).unwrap_or("").to_string(),
+                        item.get("text")
+                            .and_then(Value::as_str)
+                            .unwrap_or("")
+                            .to_string(),
                     ),
                     "reasoning" => (false, {
                         item.get("summary")
@@ -545,9 +546,7 @@ fn drive(
                 }
             }
             "approval/requested" | "approval/updated" => {
-                if let Err(e) =
-                    decide_approval(host, &mut approvals_handled, &params, session_id)
-                {
+                if let Err(e) = decide_approval(host, &mut approvals_handled, &params, session_id) {
                     let _ = host.request(
                         "turn/cancel",
                         json!({"commandId": uuid7(), "sessionId": session_id,
@@ -570,13 +569,14 @@ fn drive(
             }
             "turn/retryScheduled" => {
                 let attempt = params.get("attempt").and_then(Value::as_u64).unwrap_or(0);
-                let max = params.get("maxAttempts").and_then(Value::as_u64).unwrap_or(0);
+                let max = params
+                    .get("maxAttempts")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0);
                 push(
                     false,
                     "retry",
-                    &format!(
-                        "[muse: attempt {attempt}/{max} failed; retrying]\n"
-                    ),
+                    &format!("[muse: attempt {attempt}/{max} failed; retrying]\n"),
                 );
             }
             "turn/completed" => {
@@ -589,7 +589,11 @@ fn drive(
                 if let Some(u) = params.get("usage").and_then(usage_from_msp) {
                     result.usage = Some(u);
                 }
-                match params.get("terminal").and_then(Value::as_str).unwrap_or("completed") {
+                match params
+                    .get("terminal")
+                    .and_then(Value::as_str)
+                    .unwrap_or("completed")
+                {
                     "completed" => return Ok(result),
                     "cancelled" => {
                         return Err(format!(
@@ -651,12 +655,9 @@ pub fn run_turn(pool: &Arc<Pool>, raw: &[u8], cancel: &AtomicBool) -> Result<Vec
         if s.model != prep.model {
             continue;
         }
-        if let Ok((t, _undelivered)) = chat::continuation(
-            &s.absorbed,
-            &s.reply_call_ids,
-            &s.reply_text,
-            &prep.input,
-        ) {
+        if let Ok((t, _undelivered)) =
+            chat::continuation(&s.absorbed, &s.reply_call_ids, &s.reply_text, &prep.input)
+        {
             tail = t;
             chosen = Some(key.clone());
             break;
@@ -684,7 +685,10 @@ pub fn run_turn(pool: &Arc<Pool>, raw: &[u8], cancel: &AtomicBool) -> Result<Vec
     let mut parts = input_parts(items, system)?;
     if let Some(s) = guard.get_mut(&key) {
         if std::mem::take(&mut s.prior_cut) && !fresh {
-            parts.insert(0, json!({"type": "text", "text": acp_bridge::guard::CUT_NOTE}));
+            parts.insert(
+                0,
+                json!({"type": "text", "text": acp_bridge::guard::CUT_NOTE}),
+            );
         }
     }
 

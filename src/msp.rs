@@ -40,7 +40,8 @@ pub struct MspHost {
 impl MspHost {
     /// Spawn + handshake (`initialize`, then `initialized` notification).
     pub fn spawn(sandboxed: bool) -> Result<MspHost, String> {
-        let bin = crate::setup::resolve_command().ok_or_else(|| crate::setup::INSTALL_HINT.to_string())?;
+        let bin = crate::setup::resolve_command()
+            .ok_or_else(|| crate::setup::INSTALL_HINT.to_string())?;
         let mut args = vec!["serve".to_string(), "--trust-workspace".to_string()];
         if !sandboxed {
             args.push("--disable-sandbox".to_string());
@@ -201,11 +202,7 @@ fn reader(stdout: impl std::io::Read, inner: Arc<Inner>) {
         };
         // Numeric id = a response to one of our requests (pi's rule).
         if let Some(id) = msg.get("id").and_then(Value::as_u64) {
-            let tx = inner
-                .pending
-                .lock()
-                .ok()
-                .and_then(|mut p| p.remove(&id));
+            let tx = inner.pending.lock().ok().and_then(|mut p| p.remove(&id));
             if let Some(tx) = tx {
                 let out = if let Some(err) = msg.get("error") {
                     let kind = err
@@ -245,7 +242,8 @@ fn reader(stdout: impl std::io::Read, inner: Arc<Inner>) {
     }
     if let Ok(mut subs) = inner.subs.lock() {
         subs.retain(|tx| {
-            tx.send(json!({"method": DIED_METHOD, "params": {}})).is_ok()
+            tx.send(json!({"method": DIED_METHOD, "params": {}}))
+                .is_ok()
         });
     }
 }

@@ -4,7 +4,7 @@
 //! or credit RPC, so there is no usage feed to read. The card reports
 //! the connection honestly with no fabricated windows.
 
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 use crate::setup;
 

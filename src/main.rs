@@ -94,7 +94,10 @@ fn completed_now() -> Value {
 }
 
 fn auth_start(ops: &Ops, params: &Value) -> Result<Value, RpcError> {
-    let method = params.get("auth_method").and_then(Value::as_str).unwrap_or_default();
+    let method = params
+        .get("auth_method")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
     if method != AUTH_CLI {
         return Err(RpcError::Protocol(format!("unknown auth method {method}")));
     }
@@ -142,7 +145,10 @@ fn auth_start(ops: &Ops, params: &Value) -> Result<Value, RpcError> {
 }
 
 fn auth_poll(ops: &Ops, params: &Value) -> Result<Value, RpcError> {
-    let op_id = params.get("operation_id").and_then(Value::as_str).unwrap_or_default();
+    let op_id = params
+        .get("operation_id")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
     // Any working host settles the op, whatever login path got it there.
     if let Ok(fp) = msp::probe() {
         if !op_id.is_empty() {
@@ -188,7 +194,10 @@ fn auth_poll(ops: &Ops, params: &Value) -> Result<Value, RpcError> {
 }
 
 fn auth_cancel(ops: &Ops, params: &Value) -> Result<Value, RpcError> {
-    let op_id = params.get("operation_id").and_then(Value::as_str).unwrap_or_default();
+    let op_id = params
+        .get("operation_id")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
     if let Some(mut op) = ops.lock().unwrap().remove(op_id) {
         if let Some(mut c) = op.child.take() {
             let _ = c.kill();
@@ -199,7 +208,10 @@ fn auth_cancel(ops: &Ops, params: &Value) -> Result<Value, RpcError> {
 }
 
 fn auth_refresh(params: &Value) -> Result<Value, RpcError> {
-    let method = params.get("auth_method").and_then(Value::as_str).unwrap_or_default();
+    let method = params
+        .get("auth_method")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
     if method != AUTH_CLI {
         return Err(RpcError::Protocol(format!("unknown auth method {method}")));
     }
@@ -219,7 +231,10 @@ fn auth_refresh(params: &Value) -> Result<Value, RpcError> {
 }
 
 fn auth_revoke(params: &Value) -> Result<Value, RpcError> {
-    let method = params.get("auth_method").and_then(Value::as_str).unwrap_or_default();
+    let method = params
+        .get("auth_method")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
     if method == AUTH_CLI {
         msp::shutdown();
         setup::logout();
@@ -265,15 +280,18 @@ fn live_models() -> Result<Vec<Value>, String> {
         }));
     }
     if has_default {
-        out.insert(0, json!({"id": "muse-spark", "name": "Muse Spark (server default)"}));
+        out.insert(
+            0,
+            json!({"id": "muse-spark", "name": "Muse Spark (server default)"}),
+        );
     }
     Ok(out)
 }
 
 fn provider_models(_params: &Value) -> Result<Value, RpcError> {
     // Live catalog only (the official host's model/list). Nothing is hardcoded.
-    let rows = live_models()
-        .map_err(|e| unavailable(format!("muse: model list unavailable ({e})")))?;
+    let rows =
+        live_models().map_err(|e| unavailable(format!("muse: model list unavailable ({e})")))?;
     Ok(json!({
         "provider": PROVIDER_ID,
         "models": rows,
@@ -286,16 +304,21 @@ fn provider_chat(
     pool: &Arc<session::Pool>,
     params: &Value,
 ) -> Result<Value, RpcError> {
-    let provider = params.get("provider").and_then(Value::as_str).unwrap_or_default();
+    let provider = params
+        .get("provider")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
     if provider != PROVIDER_ID {
         return Err(RpcError::Protocol("unknown provider".into()));
     }
     gate()?;
-    let model = params.get("model").and_then(Value::as_str).unwrap_or_default();
+    let model = params
+        .get("model")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
     let pool2 = pool.clone();
-    let turn: TurnFn = Arc::new(move |raw: &[u8], cancel: &AtomicBool| {
-        session::run_turn(&pool2, raw, cancel)
-    });
+    let turn: TurnFn =
+        Arc::new(move |raw: &[u8], cancel: &AtomicBool| session::run_turn(&pool2, raw, cancel));
     let (relay_url, relay_token) =
         relay::mint_turn(intents, model, turn, TOKEN_PREFIX).map_err(unavailable)?;
     Ok(json!({
@@ -305,14 +328,21 @@ fn provider_chat(
 }
 
 fn command_run(params: &Value) -> Result<Value, RpcError> {
-    let name = params.get("name").and_then(Value::as_str).unwrap_or_default();
+    let name = params
+        .get("name")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
     if name != "/muse" {
         return Err(RpcError::Protocol(format!("unknown command {name}")));
     }
     let argv: Vec<String> = params
         .get("argv")
         .and_then(Value::as_array)
-        .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect()
+        })
         .unwrap_or_default();
     match argv.first().map(String::as_str).unwrap_or("") {
         "" => Ok(json!({})), // bare /muse → provider-login shortcut

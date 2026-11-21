@@ -73,9 +73,8 @@ pub fn cli_version() -> Option<String> {
 /// `cmd login` — same product family). The child is returned for the
 /// auth-op lifecycle; stdout may carry a verification URL.
 pub fn spawn_login() -> std::io::Result<std::process::Child> {
-    let bin = resolve_command().ok_or_else(|| {
-        std::io::Error::new(std::io::ErrorKind::NotFound, INSTALL_HINT)
-    })?;
+    let bin = resolve_command()
+        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, INSTALL_HINT))?;
     Command::new(bin)
         .arg("login")
         .env("NO_OPEN_BROWSER", "1")
