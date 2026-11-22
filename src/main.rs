@@ -382,7 +382,7 @@ fn dispatch(
         "provider/auth/cancel" => auth_cancel(ops, params),
         "provider/auth/refresh" => auth_refresh(params),
         "provider/auth/revoke" => auth_revoke(params),
-        "provider/usage" => usage::handle(&params).map_err(unavailable),
+        "provider/usage" => usage::handle(params).map_err(unavailable),
         "provider/models" => provider_models(params),
         "provider/chat" => provider_chat(intents, pool, params),
         "command/run" => command_run(params),

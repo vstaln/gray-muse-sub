@@ -167,8 +167,7 @@ fn mock_host_full_turn() {
     // Turn 4: unanswerable userInput → cancel + failed turn.
     let body4 = json!({"model": "muse-spark-1.3", "input": [user_msg("ask-me")]});
     let err = session::run_turn(&pool, body4.to_string().as_bytes(), &cancel)
-        .err()
-        .expect("userInput turn should fail");
+        .expect_err("userInput turn should fail");
     assert!(err.contains("clarifying"), "unexpected error: {err}");
     let entries = log_lines(&log);
     assert_eq!(count_method(&entries, "userInput/cancel"), 1);
