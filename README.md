@@ -10,7 +10,7 @@ CLI's `muse serve` child exactly like the Pi extension does.
 ## What it does
 
 - `provider/models` — live `model/list` from the running host, and no hardcoded fallback: if the host can't be reached, the list is reported unavailable.
-- `provider/chat` — per-turn loopback relay (shared `acp_bridge::relay`).
+- `provider/chat` — per-turn loopback relay (shared `gray_acp::relay`).
   The host POSTs an OpenAI Responses request; the sidecar drives one MSP
   `turn/start` → `item/delta`/`item/completed` → `turn/completed` cycle and
   streams Responses SSE back. Settled turns persist a pool record
@@ -58,7 +58,7 @@ Then install the binary as a gray plugin (same flow as `cursor-sub` /
   only when `GRAY_MUSE_SUB_UNSANDBOXED=1`); spawned lazily, respawned if it
   dies, killed on `plugin/shutdown`.
 - One MSP `session/start` per conversation; continuation is matched by
-  verbatim absorbed-prefix + reply echo (same model as `acp_bridge`).
+  verbatim absorbed-prefix + reply echo (same model as `gray_acp`).
 - Spark-family models (`muse-spark*`, `spark`) send `providerId: "meta"`;
   the bare `muse-spark` id sends no `modelId` (server default).
 - `reasoningEffort` maps `off`→`none`, `max`→`ultra`, rest verbatim.
