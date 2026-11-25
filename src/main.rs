@@ -1,7 +1,7 @@
 //! muse-sub — Gray sidecar that relays chat turns to the Muse Code CLI's
 //! `muse serve` MSP host (stdio JSON-RPC; pi-muse-msp parity, model role).
 
-use acp_bridge::relay::{self, Intents, TurnFn};
+use gray_acp::relay::{self, Intents, TurnFn};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};

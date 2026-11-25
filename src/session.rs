@@ -1,4 +1,4 @@
-//! Muse session pool + turn driver — mirrors acp_bridge::session's
+//! Muse session pool + turn driver — mirrors gray_acp::session's
 //! shape (absorbed-prefix continuation matching, per-conversation
 //! sessions) but drives `muse serve` MSP sessions instead of ACP
 //! children.
@@ -14,8 +14,8 @@
 //! - `item/delta` field `text` is assistant text; `summary.N` fields are
 //!   visible reasoning (MSP v1 never streams raw thinking text).
 
-use acp_bridge::chat::{self, OutItem, TurnResult, Usage};
-use acp_bridge::guard::{self, TurnGuard};
+use gray_acp::chat::{self, OutItem, TurnResult, Usage};
+use gray_acp::guard::{self, TurnGuard};
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -687,7 +687,7 @@ pub fn run_turn(pool: &Arc<Pool>, raw: &[u8], cancel: &AtomicBool) -> Result<Vec
         if std::mem::take(&mut s.prior_cut) && !fresh {
             parts.insert(
                 0,
-                json!({"type": "text", "text": acp_bridge::guard::CUT_NOTE}),
+                json!({"type": "text", "text": gray_acp::guard::CUT_NOTE}),
             );
         }
     }

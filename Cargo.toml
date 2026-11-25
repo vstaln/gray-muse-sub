@@ -13,7 +13,7 @@ name = "muse-sub"
 path = "src/main.rs"
 
 [dependencies]
-gray-acp-bridge = { path = "../gray-acp-bridge" }
+gray-acp = { git = "https://github.com/vstaln/gray.git" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 uuid = { version = "1", features = ["v4"] }
