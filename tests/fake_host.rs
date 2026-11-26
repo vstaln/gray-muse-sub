@@ -10,60 +10,91 @@ use serde_json::{json, Value};
 use std::sync::atomic::AtomicBool;
 
 const FAKE: &str = r#"#!/usr/bin/env python3
-import sys, json, os
+import sys, json, os, time
 LOG = os.environ.get("FAKE_MUSE_LOG", "/dev/null")
+WS = os.environ.get("FAKE_WS", "/tmp")
+def now():
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 def send(o):
+    o.setdefault("jsonrpc", "2.0")
     sys.stdout.write(json.dumps(o) + "\n"); sys.stdout.flush()
-def log(o):
-    with open(LOG, "a") as f: f.write(json.dumps(o) + "\n")
+def session(sid, ws):
+    return {"sessionId": sid, "path": "", "status": "idle", "activeTurnId": None,
+            "createdAt": now(), "updatedAt": now(), "workspaceRoot": ws,
+            "providerId": "meta", "modelId": "muse-spark-1.3", "turnCount": 0,
+            "forkedFrom": None, "sideFrom": None}
+def init_result():
+    return {"serverInfo": {"name": "muse", "version": "fake-1.0"}, "userAgent": "muse/fake",
+            "museHome": "/tmp/muse", "platformFamily": "unix", "platformOs": "linux",
+            "schema": {"version": 1, "fingerprint": "fake-1"},
+            "grantedCapabilities": [], "experimentalApi": False}
 for line in sys.stdin:
     line = line.strip()
     if not line: continue
     try: msg = json.loads(line)
     except Exception: continue
-    log(msg)
+    with open(LOG, "a") as f: f.write(json.dumps(msg) + "\n")
     rid = msg.get("id"); meth = msg.get("method"); p = msg.get("params") or {}
-    if rid is None:
-        continue  # notification (e.g. initialized)
+    if rid is None: continue
     if meth == "initialize":
-        send({"id": rid, "result": {"schema": {"fingerprint": "fake-1"}}})
+        send({"id": rid, "result": init_result()})
     elif meth == "model/list":
         send({"id": rid, "result": {"models": [
             {"modelId": "muse-spark-1.3", "displayLabel": "muse-spark-1.3", "isDefault": True},
             {"modelId": "muse-spark-1.2", "displayLabel": "muse-spark-1.2"}]}})
     elif meth == "session/start":
-        send({"id": rid, "result": {"session": {"sessionId": "sess-fake"}}})
+        sid = p.get("sessionId", "sess-fake")
+        send({"id": rid, "result": {"session": session(sid, p.get("workspaceRoot", WS)),
+              "viewCursor": "c1"}})
+    elif meth == "session/resume":
+        send({"id": rid, "result": {"session": session(p.get("sessionId"), WS),
+              "viewCursor": "c1", "history": {}}})
+    elif meth == "session/setApprovalMode":
+        send({"id": rid, "result": {}})
     elif meth == "turn/start":
         tid = p.get("commandId", "t1"); sid = p.get("sessionId")
-        send({"id": rid, "result": {"turnId": tid}})
-        text = " ".join(str(x.get("text", "")) for x in p.get("input", []) if x.get("type") == "text")
+        send({"id": rid, "result": {"commandId": tid, "status": "accepted", "turnId": tid,
+              "startedNewTurn": True, "disposition": "started"}})
+        text = " ".join(str(x.get("text","")) for x in p.get("input",[]) if x.get("type")=="text")
+        if "ask-me" in text:
+            send({"method": "userInput/requested", "params": {"sessionId": sid, "turnId": tid,
+                  "userInputId": "u1", "questions": []}})
         if "approve-me" in text:
-            send({"method": "approval/requested", "params": {
-                "sessionId": sid, "approvalId": "ap1", "currentRequirementId": "r1",
-                "toolName": "bash",
-                "availableChoices": [
+            send({"method": "approval/requested", "params": {"sessionId": sid, "turnId": tid,
+                  "approvalId": "ap1", "currentRequirementId": "r1", "toolName": "bash",
+                  "availableChoices": [
                     {"choiceId": "c1", "decision": "approved", "label": "Allow"},
                     {"choiceId": "c2", "decision": "denied", "label": "Deny"}]}})
+        send({"method": "item/started", "params": {"sessionId": sid, "turnId": tid, "item": {
+              "itemId": "m1", "turnId": tid, "kind": "agentMessage", "status": "in_progress",
+              "revision": 1, "text": ""}}})
+        send({"method": "item/started", "params": {"sessionId": sid, "turnId": tid, "item": {
+              "itemId": "r1", "turnId": tid, "kind": "reasoning", "status": "in_progress",
+              "revision": 1, "summary": []}}})
+        for d in ("Hello ", "world"):
+            send({"method": "item/delta", "params": {"sessionId": sid, "turnId": tid,
+                  "itemId": "m1", "field": "text", "delta": d}})
+        send({"method": "item/delta", "params": {"sessionId": sid, "turnId": tid,
+              "itemId": "r1", "field": "summary.0", "delta": "musing"}})
+        send({"method": "item/completed", "params": {"sessionId": sid, "turnId": tid, "item": {
+              "itemId": "m1", "turnId": tid, "kind": "agentMessage", "status": "completed",
+              "revision": 2, "text": "Hello world"}}})
+        send({"method": "item/completed", "params": {"sessionId": sid, "turnId": tid, "item": {
+              "itemId": "r1", "turnId": tid, "kind": "reasoning", "status": "completed",
+              "revision": 2, "summary": ["musing"]}}})
+        usage = {"inputTokens": 10, "outputTokens": 5, "cachedTokens": 2, "reasoningTokens": 0}
+        send({"method": "session/tokenUsage", "params": {"sessionId": sid, "turnId": tid,
+              "usage": usage}})
+        rng = {"stream": {"kind": "run", "id": tid},
+               "first": {"id": "e1", "sequence": 1}, "last": {"id": "e9", "sequence": 9}}
+        base = {"sessionId": sid, "turnId": tid, "viewCursor": "c9", "sourceRange": rng}
         if "ask-me" in text:
-            send({"method": "userInput/requested", "params": {
-                "sessionId": sid, "userInputId": "u1", "questions": []}})
-        send({"method": "item/delta", "params": {"sessionId": sid, "itemId": "m1",
-              "field": "text", "delta": "Hello "}})
-        send({"method": "item/delta", "params": {"sessionId": sid, "itemId": "m1",
-              "field": "text", "delta": "world"}})
-        send({"method": "item/delta", "params": {"sessionId": sid, "itemId": "r1",
-              "field": "summary.0", "delta": "musing"}})
-        send({"method": "session/tokenUsage", "params": {"sessionId": sid,
-              "usage": {"inputTokens": 10, "outputTokens": 5}}})
-        if "ask-me" in text:
-            send({"method": "turn/completed", "params": {"sessionId": sid, "turnId": tid,
-                  "terminal": "cancelled", "reason": "user refused"}})
+            send({"method": "turn/completed", "params": dict(base,
+                  terminal="cancelled", reason="user refused")})
         else:
-            send({"method": "turn/completed", "params": {"sessionId": sid, "turnId": tid,
-                  "terminal": "completed",
-                  "usage": {"inputTokens": 10, "outputTokens": 5, "cacheReadTokens": 2}}})
+            send({"method": "turn/completed", "params": dict(base,
+                  terminal="completed", usage=usage)})
     else:
-        # approval/decide, userInput/cancel, turn/interrupt, turn/cancel, ...
         send({"id": rid, "result": {}})
 "#;
 
@@ -123,8 +154,7 @@ fn mock_host_full_turn() {
     assert!(s.contains("Hello world"), "sse missing text: {s}");
     assert!(s.contains("musing"), "sse missing reasoning: {s}");
     assert!(s.contains("response.completed"));
-    // terminal usage: 10 in + 5 out + 2 cacheRead = 17 total.
-    assert!(s.contains("\"total_tokens\":17"), "sse missing usage: {s}");
+    assert!(s.contains("\"total_tokens\":15"), "sse missing usage: {s}");
 
     // Turn 2: absorbed prefix + reply echo + new tail → session reuse
     // (no second session/start).
@@ -153,7 +183,7 @@ fn mock_host_full_turn() {
     );
     assert!(second_input.contains("again"));
 
-    // Turn 3: approval auto-decide (approved choice picked).
+    // Turn 3: approval decline (no interactive UI, so the denied choice is taken).
     let body3 = json!({"model": "muse-spark-1.3", "input": [user_msg("approve-me")]});
     session::run_turn(&pool, body3.to_string().as_bytes(), &cancel).unwrap();
     let entries = log_lines(&log);
@@ -162,15 +192,15 @@ fn mock_host_full_turn() {
         .filter(|m| m.get("method").and_then(Value::as_str) == Some("approval/decide"))
         .collect();
     assert_eq!(decides.len(), 1);
-    assert_eq!(decides[0]["params"]["choiceId"], "c1");
+    assert_eq!(decides[0]["params"]["choiceId"], "c2");
 
-    // Turn 4: unanswerable userInput → cancel + failed turn.
+    // Turn 4: unanswerable userInput interrupts the turn and fails it.
     let body4 = json!({"model": "muse-spark-1.3", "input": [user_msg("ask-me")]});
     let err = session::run_turn(&pool, body4.to_string().as_bytes(), &cancel)
         .expect_err("userInput turn should fail");
     assert!(err.contains("clarifying"), "unexpected error: {err}");
     let entries = log_lines(&log);
-    assert_eq!(count_method(&entries, "userInput/cancel"), 1);
+    assert_eq!(count_method(&entries, "turn/interrupt"), 1);
 
     msp::shutdown();
 }
