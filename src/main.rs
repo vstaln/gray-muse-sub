@@ -38,6 +38,7 @@ fn manifest() -> Value {
             },
         }],
         "commands": ["/muse"],
+        "command_descriptions": {"/muse": "switch to Muse models"},
     })
 }
 
@@ -254,8 +255,7 @@ fn gate() -> Result<(), RpcError> {
 /// Live `model/list` rows → catalog; a default row brings back the
 /// bare "muse-spark" server-default alias (pi parity).
 fn live_models() -> Result<Vec<Value>, String> {
-    let host = msp::ensure()?;
-    let result = host.request("model/list", json!({}), msp::RPC_TIMEOUT)?;
+    let (result, _) = msp::catalog()?;
     let rows = result
         .get("models")
         .and_then(Value::as_array)
@@ -414,13 +414,6 @@ fn main() {
     let ops: Ops = Arc::new(Mutex::new(HashMap::new()));
     let intents: Intents = Default::default();
     let pool = session::Pool::new();
-    // Re-pool sessions persisted before a restart so the next turn on
-    // each conversation is a strict continuation, not a transcript
-    // replay — best-effort, background.
-    {
-        let pool = pool.clone();
-        std::thread::spawn(move || session::rewarm(&pool));
-    }
     let stdin = std::io::stdin();
     let stdout = std::io::stdout();
     let mut out = stdout.lock();
@@ -442,10 +435,11 @@ fn main() {
         let params = req.get("params").cloned().unwrap_or_else(|| json!({}));
         let result = dispatch(&method, &params, &ops, &intents, &pool);
         if !id.is_null() && !write_response(&mut out, id, result) {
-            return;
+            break;
         }
         if method == "plugin/shutdown" {
             break;
         }
     }
+    msp::shutdown();
 }

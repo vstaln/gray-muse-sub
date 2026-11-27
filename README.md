@@ -1,11 +1,9 @@
 # gray-muse-sub
 
-Gray provider sidecar for **Muse Code** — relays chat turns to the local
-`muse serve` MSP host (newline-delimited JSON-RPC 2.0 over stdio), the same
-surface [`pi-muse-msp`](https://github.com/jwise7/pi-muse-msp) uses to drive
-Muse from Pi. Muse models are Command Code's `muse-spark` family
-(commandcode.ai); there is no public HTTP API, so the sidecar drives the
-CLI's `muse serve` child exactly like the Pi extension does.
+Gray connects to the local `muse serve` host over MSP using the official
+Rust `muse-code-sdk`. Muse Code owns sign-in, model discovery, native
+sessions, and workspace tools. Gray handles turn cancellation and
+converts MSP text, reasoning, and usage into the provider response.
 
 ## What it does
 
@@ -13,10 +11,10 @@ CLI's `muse serve` child exactly like the Pi extension does.
 - `provider/chat` — per-turn loopback relay (shared `gray_acp::relay`).
   The host POSTs an OpenAI Responses request; the sidecar drives one MSP
   `turn/start` → `item/delta`/`item/completed` → `turn/completed` cycle and
-  streams Responses SSE back. Settled turns persist a pool record
-  (`~/.cache/muse-sub/resume/<sid>`); at startup, records inside a 6h warm
-  window are re-pooled via `session/resume` so the next turn continues the
-  MSP session instead of replaying the transcript.
+  returns Responses-format SSE. Settled turns persist a pool record
+  (`~/.cache/muse-sub/resume/<sid>`); on the first turn after a restart,
+  records inside a 6h warm window are reattached via `session/resume` so
+  that turn continues the MSP session instead of replaying the transcript.
 - `provider/auth/*` — `muse-cli` (oauth-kind) auth method: `muse` is a
   login-owning CLI, so "credentials" = a working `muse serve` handshake
   (`initialize` + `model/list` probe). `auth/start` runs `muse login`
@@ -25,16 +23,13 @@ CLI's `muse serve` child exactly like the Pi extension does.
 
 ## Install
 
-Build from source (workspace: `~/grayplugins`):
+Build from source with Rust 1.97 or newer (workspace: `~/grayplugins`):
 
 ```sh
 cd ~/grayplugins/gray-muse-sub
-cargo build --release
-gray plugin check ./target/release/muse-sub
+cargo build --locked --release
+gray plugin install "$PWD/target/release/muse-sub"
 ```
-
-Then install the binary as a gray plugin (same flow as `cursor-sub` /
-`opencode-sub`).
 
 ## Setup
 
@@ -52,7 +47,7 @@ Then install the binary as a gray plugin (same flow as `cursor-sub` /
 | `GRAY_MUSE_SUB_UNSANDBOXED` | unset (sandboxed) | `1` = `--disable-sandbox` + `allowAll` (pi-muse-msp's old default); `GRAY_MUSE_SUB_SANDBOXED=1` remains a no-op |
 | `GRAY_MUSE_SUB_MAX_STEPS` | `30` | per-turn cap on billed model steps (`0` = unlimited); on the cap the turn is interrupted and ends with a notice |
 
-## Behavior notes (pi-muse-msp parity)
+## Behavior notes
 
 - One `muse serve --trust-workspace` host per sidecar (`--disable-sandbox`
   only when `GRAY_MUSE_SUB_UNSANDBOXED=1`); spawned lazily, respawned if it
@@ -62,9 +57,9 @@ Then install the binary as a gray plugin (same flow as `cursor-sub` /
 - Spark-family models (`muse-spark*`, `spark`) send `providerId: "meta"`;
   the bare `muse-spark` id sends no `modelId` (server default).
 - `reasoningEffort` maps `off`→`none`, `max`→`ultra`, rest verbatim.
-- Approvals: first `approved`/`approvedForSession` choice is auto-decided;
-  no suitable choice (or a `userInput/requested` prompt) fails the turn —
-  the headless path, same as `pi -p`.
+- Approvals: a `denied`/`abort` choice is picked and the turn is
+  interrupted (nothing is auto-approved); an approval with no such choice
+  (or a `userInput/requested` prompt) also fails the turn.
 - Usage: `session/tokenUsage` and terminal `turn/completed.usage`
   (`inputTokens`/`outputTokens`/cache fields folded into Responses usage).
 - `model[effort=X]` bracket overrides are honored via `reasoningEffort`.
@@ -82,7 +77,7 @@ Then install the binary as a gray plugin (same flow as `cursor-sub` /
 - `muse login` command name is best-effort (unverified — the Pi extension
   never invokes login); if it doesn't exist, run the CLI's documented
   login manually — `auth/poll` settles on any working host.
-- Live end-to-end needs a real `muse` install; this repo was verified
-  against a mock MSP host (`cargo test`), which exercises the full relay:
-  handshake → session/start → turn/start → deltas → terminal, approval
-  auto-decide, userInput refusal, and cross-turn session reuse.
+- The release build was exercised through Gray against an isolated MSP
+  host fixture: reasoning and text delivery, native session resume across
+  a Gray restart, and interruption both before and after the turn-start
+  acknowledgement. Live model access requires an authenticated Muse CLI.
